@@ -234,168 +234,63 @@ bTree(5(2(8,2),3(a,6)))'></textarea>
       const valueText = String(node.value);
       const valueWidth = valueText.length;
 
-      function makeRow(width) {
-        return new Array(width).fill(' ');
-      }
-
-      function extractProfiles(rows) {
-        const leftProfile = [];
-        const rightProfile = [];
-        rows.forEach((row) => {
-          let first = row.findIndex((char) => char !== ' ');
-          if (first === -1) {
-            first = 0;
-          }
-          let last = row.length - 1;
-          while (last >= 0 && row[last] === ' ') {
-            last -= 1;
-          }
-          if (last < first) {
-            last = first;
-          }
-          leftProfile.push(first);
-          rightProfile.push(last);
-        });
-        return { leftProfile, rightProfile };
-      }
-
       if (!node.left && !node.right) {
         return {
           lines: [valueText],
           width: valueWidth,
-          rootPos: Math.floor((valueWidth - 1) / 2),
-          leftProfile: [0],
-          rightProfile: [valueWidth - 1],
+          height: 1,
+          rootPos: Math.floor(valueWidth / 2),
         };
       }
 
-      if (!node.left || !node.right) {
-        const child = node.left ? buildTreeLines(node.left) : buildTreeLines(node.right);
-        const isRightChild = Boolean(node.right);
-
-        let width = Math.max(child.width, valueWidth);
-        let childStart = 0;
-        let rootPos = child.rootPos;
-        let rootStart = rootPos - Math.floor((valueWidth - 1) / 2);
-
-        if (rootStart < 0) {
-          const shift = -rootStart;
-          width += shift;
-          rootPos += shift;
-          childStart += shift;
-          rootStart = 0;
-        }
-
-        if (rootStart + valueWidth > width) {
-          width = rootStart + valueWidth;
-        }
-
-        const rows = [];
-        const firstRow = makeRow(width);
-        placeString(firstRow, valueText, rootStart);
-        rows.push(firstRow);
-
-        const secondRow = makeRow(width);
-        const childRoot = childStart + child.rootPos;
-        const connectorPos = Math.floor((rootPos + childRoot) / 2);
-        if (connectorPos >= 0 && connectorPos < width) {
-          secondRow[connectorPos] = isRightChild ? '\\' : '/';
-        }
-        rows.push(secondRow);
-
-        child.lines.forEach((line) => {
-          const row = makeRow(width);
-          placeString(row, line, childStart);
-          rows.push(row);
-        });
-
-        const { leftProfile, rightProfile } = extractProfiles(rows);
-        const lines = rows.map((row) => row.join(''));
-
+      if (node.right && !node.left) {
+        const right = buildTreeLines(node.right);
+        const firstLine = `${valueText}${repeat(' ', right.rootPos)}${repeat(' ', right.width - right.rootPos)}`;
+        const secondLine = `${repeat(' ', valueWidth + right.rootPos)}\\${repeat(' ', right.width - right.rootPos - 1)}`;
+        const shiftedRight = right.lines.map((line) => `${repeat(' ', valueWidth)}${line}`);
         return {
-          lines,
-          width,
-          rootPos,
-          leftProfile,
-          rightProfile,
+          lines: [firstLine, secondLine, ...shiftedRight],
+          width: valueWidth + right.width,
+          height: right.height + 2,
+          rootPos: Math.floor(valueWidth / 2),
+        };
+      }
+
+      if (node.left && !node.right) {
+        const left = buildTreeLines(node.left);
+        const firstLine = `${repeat(' ', left.rootPos + 1)}${valueText}${repeat(' ', left.width - left.rootPos - 1)}`;
+        const secondLine = `${repeat(' ', left.rootPos)}/${repeat(' ', left.width - left.rootPos - 1 + valueWidth)}`;
+        const shiftedLeft = left.lines.map((line) => `${line}${repeat(' ', valueWidth)}`);
+        return {
+          lines: [firstLine, secondLine, ...shiftedLeft],
+          width: left.width + valueWidth,
+          height: left.height + 2,
+          rootPos: left.width + Math.floor(valueWidth / 2),
         };
       }
 
       const left = buildTreeLines(node.left);
       const right = buildTreeLines(node.right);
-      const minSpacing = 2;
 
-      let offset = minSpacing;
-      const overlapDepth = Math.min(left.lines.length, right.lines.length);
-      for (let depth = 0; depth < overlapDepth; depth += 1) {
-        const requiredOffset =
-          left.rightProfile[depth] + minSpacing - right.leftProfile[depth];
-        if (requiredOffset > offset) {
-          offset = requiredOffset;
-        }
+      const firstLine = `${repeat(' ', left.rootPos + 1)}${repeat(' ', left.width - left.rootPos - 1)}${valueText}${repeat(' ', right.rootPos)}${repeat(' ', right.width - right.rootPos)}`;
+      const secondLine = `${repeat(' ', left.rootPos)}/${repeat(' ', left.width - left.rootPos - 1 + valueWidth + right.rootPos)}\\${repeat(' ', right.width - right.rootPos - 1)}`;
+
+      const leftLines = left.lines.slice();
+      const rightLines = right.lines.slice();
+
+      if (leftLines.length < rightLines.length) {
+        leftLines.push(...new Array(rightLines.length - leftLines.length).fill(repeat(' ', left.width)));
+      } else if (rightLines.length < leftLines.length) {
+        rightLines.push(...new Array(leftLines.length - rightLines.length).fill(repeat(' ', right.width)));
       }
 
-      let width = Math.max(left.width, offset + right.width);
-      let leftStart = 0;
-      let rightStart = offset;
-      let leftRoot = left.rootPos + leftStart;
-      let rightRoot = rightStart + right.rootPos;
-      let rootPos = Math.floor((leftRoot + rightRoot) / 2);
-      let rootStart = rootPos - Math.floor((valueWidth - 1) / 2);
-
-      if (rootStart < 0) {
-        const shift = -rootStart;
-        width += shift;
-        rootPos += shift;
-        leftStart += shift;
-        rightStart += shift;
-        leftRoot += shift;
-        rightRoot += shift;
-        rootStart = 0;
-      }
-
-      if (rootStart + valueWidth > width) {
-        const extension = rootStart + valueWidth - width;
-        width += extension;
-      }
-
-      const rows = [];
-      const firstRow = makeRow(width);
-      placeString(firstRow, valueText, rootStart);
-      rows.push(firstRow);
-
-      const secondRow = makeRow(width);
-      const leftConnectorPos = Math.floor((rootPos + leftRoot) / 2);
-      const rightConnectorPos = Math.floor((rootPos + rightRoot) / 2);
-      if (leftConnectorPos >= 0 && leftConnectorPos < width) {
-        secondRow[leftConnectorPos] = '/';
-      }
-      if (rightConnectorPos >= 0 && rightConnectorPos < width) {
-        secondRow[rightConnectorPos] = '\\';
-      }
-      rows.push(secondRow);
-
-      const childHeight = Math.max(left.lines.length, right.lines.length);
-      for (let depth = 0; depth < childHeight; depth += 1) {
-        const row = makeRow(width);
-        if (depth < left.lines.length) {
-          placeString(row, left.lines[depth], leftStart);
-        }
-        if (depth < right.lines.length) {
-          placeString(row, right.lines[depth], rightStart);
-        }
-        rows.push(row);
-      }
-
-      const { leftProfile, rightProfile } = extractProfiles(rows);
-      const lines = rows.map((row) => row.join(''));
+      const merged = leftLines.map((line, idx) => `${line}${repeat(' ', valueWidth)}${rightLines[idx]}`);
 
       return {
-        lines,
-        width,
-        rootPos,
-        leftProfile,
-        rightProfile,
+        lines: [firstLine, secondLine, ...merged],
+        width: left.width + valueWidth + right.width,
+        height: Math.max(left.height, right.height) + 2,
+        rootPos: left.width + Math.floor(valueWidth / 2),
       };
     }
 
@@ -413,8 +308,7 @@ bTree(5(2(8,2),3(a,6)))'></textarea>
       }
 
       const { lines } = buildTreeLines(root);
-      const trimmed = lines.map((line) => rtrim(line));
-      const expanded = trimmed.map((line) => line.replace(/ /gu, '  '));
+      const expanded = lines.map((line) => line.replace(/ /gu, '  '));
       return expanded.join('\n');
     }
 
