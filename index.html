@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Array and Binary Tree Visualizer</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Fira Mono", "Courier New", monospace;
+      background-color: #f5f5f5;
+    }
+
+    .app {
+      display: flex;
+      height: 100vh;
+    }
+
+    textarea {
+      width: 50%;
+      padding: 1rem;
+      border: none;
+      resize: none;
+      font-family: inherit;
+      font-size: 1rem;
+      line-height: 1.4;
+      background-color: #1e1e1e;
+      color: #f5f5f5;
+      height: 100%;
+      white-space: pre;
+      overflow: auto;
+    }
+
+    textarea:focus {
+      outline: none;
+    }
+
+    .output {
+      background-color: #111;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <textarea id="input" spellcheck="false" placeholder='Enter commands such as:
+bars("nameOfArray",[3,2,4])
+bTree(5(2(8,2),3(a,6)))'></textarea>
+    <textarea id="output" class="output" spellcheck="false" readonly></textarea>
+  </div>
+  <script>
+    const inputArea = document.getElementById('input');
+    const outputArea = document.getElementById('output');
+
+    function repeat(char, count) {
+      return char.repeat(Math.max(0, count));
+    }
+
+    function rtrim(line) {
+      return line.replace(/\s+$/u, '');
+    }
+
+    function placeString(buffer, text, startIndex) {
+      if (startIndex < 0) {
+        return;
+      }
+      for (let i = 0; i < text.length; i += 1) {
+        const idx = startIndex + i;
+        if (idx >= 0 && idx < buffer.length) {
+          buffer[idx] = text[i];
+        }
+      }
+    }
+
+    function parseBarsCommand(command) {
+      const match = command.match(/^bars\(\s*"([^"]+)"\s*,\s*\[([^\]]*)\]\s*\)$/u);
+      if (!match) {
+        throw new Error('Invalid bars command.');
+      }
+
+      const name = match[1];
+      const rawValues = match[2].trim();
+      if (!rawValues) {
+        return { name, values: [] };
+      }
+
+      const values = rawValues.split(',').map((part) => {
+        const trimmed = part.trim();
+        const number = Number(trimmed);
+        if (!Number.isFinite(number)) {
+          throw new Error(`Invalid number "${trimmed}".`);
+        }
+        return number;
+      });
+
+      return { name, values };
+    }
+
+    function renderBars(command) {
+      let parsed;
+      try {
+        parsed = parseBarsCommand(command);
+      } catch (error) {
+        return error.message;
+      }
+
+      const { name, values } = parsed;
+      if (values.some((value) => value < 0)) {
+        return 'Array values must be non-negative.';
+      }
+
+      const maxValue = values.length ? Math.max(...values) : 0;
+
+      let numbersContent = '[';
+      const positions = [];
+      let pointer = 1;
+      values.forEach((value, index) => {
+        const numberText = String(value);
+        const centerOffset = Math.floor(numberText.length / 2);
+        positions.push(pointer + centerOffset);
+        numbersContent += numberText;
+        pointer += numberText.length;
+        if (index < values.length - 1) {
+          numbersContent += ', ';
+          pointer += 2;
+        }
+      });
+      numbersContent += ']';
+
+      const arrayLine = `${name} ${numbersContent}`;
+      const leftPadding = name.length + 1;
+      const finalIndexText = String(values.length);
+      const width = leftPadding + numbersContent.length + finalIndexText.length + 1;
+
+      const barLines = [];
+      for (let level = maxValue; level > 0; level -= 1) {
+        const row = new Array(width).fill(' ');
+        values.forEach((value, idx) => {
+          if (value >= level) {
+            const position = leftPadding + positions[idx];
+            if (position < row.length) {
+              row[position] = 'x';
+            }
+          }
+        });
+        barLines.push(rtrim(row.join('')));
+      }
+
+      const indexLineArray = new Array(width).fill(' ');
+      values.forEach((_, idx) => {
+        const text = String(idx);
+        const position = leftPadding + positions[idx] - Math.floor(text.length / 2);
+        placeString(indexLineArray, text, position);
+      });
+      const finalIndexPosition = leftPadding + numbersContent.length + 1;
+      placeString(indexLineArray, finalIndexText, finalIndexPosition);
+
+      const outputLines = [];
+      if (barLines.length) {
+        outputLines.push(...barLines);
+      }
+      outputLines.push(arrayLine);
+      outputLines.push(rtrim(indexLineArray.join('')));
+
+      return outputLines.join('\n');
+    }
+
+    function parseBTreeExpression(expression) {
+      let index = 0;
+
+      function skipWhitespace() {
+        while (index < expression.length && /\s/u.test(expression[index])) {
+          index += 1;
+        }
+      }
+
+      function parseNode() {
+        skipWhitespace();
+        if (index >= expression.length) {
+          return null;
+        }
+
+        const start = index;
+        while (index < expression.length && /[^\s(),]/u.test(expression[index])) {
+          index += 1;
+        }
+
+        if (start === index) {
+          throw new Error(`Invalid token at position ${index}.`);
+        }
+
+        const value = expression.slice(start, index);
+        const node = { value, left: null, right: null };
+        skipWhitespace();
+
+        if (index < expression.length && expression[index] === '(') {
+          index += 1;
+          node.left = parseNode();
+          skipWhitespace();
+          if (index < expression.length && expression[index] === ',') {
+            index += 1;
+            node.right = parseNode();
+          } else {
+            throw new Error('Missing comma between child nodes.');
+          }
+          skipWhitespace();
+          if (index < expression.length && expression[index] === ')') {
+            index += 1;
+          } else {
+            throw new Error('Missing closing parenthesis.');
+          }
+        }
+
+        return node;
+      }
+
+      const root = parseNode();
+      skipWhitespace();
+      if (index !== expression.length) {
+        throw new Error(`Unexpected character at position ${index}.`);
+      }
+
+      if (!root) {
+        throw new Error('Empty tree expression.');
+      }
+
+      return root;
+    }
+
+    function buildTreeLines(node) {
+      const valueText = String(node.value);
+      const valueWidth = valueText.length;
+
+      function makeRow(width) {
+        return new Array(width).fill(' ');
+      }
+
+      function extractProfiles(rows) {
+        const leftProfile = [];
+        const rightProfile = [];
+        rows.forEach((row) => {
+          let first = row.findIndex((char) => char !== ' ');
+          if (first === -1) {
+            first = 0;
+          }
+          let last = row.length - 1;
+          while (last >= 0 && row[last] === ' ') {
+            last -= 1;
+          }
+          if (last < first) {
+            last = first;
+          }
+          leftProfile.push(first);
+          rightProfile.push(last);
+        });
+        return { leftProfile, rightProfile };
+      }
+
+      if (!node.left && !node.right) {
+        return {
+          lines: [valueText],
+          width: valueWidth,
+          rootPos: Math.floor((valueWidth - 1) / 2),
+          leftProfile: [0],
+          rightProfile: [valueWidth - 1],
+        };
+      }
+
+      if (!node.left || !node.right) {
+        const child = node.left ? buildTreeLines(node.left) : buildTreeLines(node.right);
+        const isRightChild = Boolean(node.right);
+
+        let width = Math.max(child.width, valueWidth);
+        let childStart = 0;
+        let rootPos = child.rootPos;
+        let rootStart = rootPos - Math.floor((valueWidth - 1) / 2);
+
+        if (rootStart < 0) {
+          const shift = -rootStart;
+          width += shift;
+          rootPos += shift;
+          childStart += shift;
+          rootStart = 0;
+        }
+
+        if (rootStart + valueWidth > width) {
+          width = rootStart + valueWidth;
+        }
+
+        const rows = [];
+        const firstRow = makeRow(width);
+        placeString(firstRow, valueText, rootStart);
+        rows.push(firstRow);
+
+        const secondRow = makeRow(width);
+        const childRoot = childStart + child.rootPos;
+        const connectorPos = Math.floor((rootPos + childRoot) / 2);
+        if (connectorPos >= 0 && connectorPos < width) {
+          secondRow[connectorPos] = isRightChild ? '\\' : '/';
+        }
+        rows.push(secondRow);
+
+        child.lines.forEach((line) => {
+          const row = makeRow(width);
+          placeString(row, line, childStart);
+          rows.push(row);
+        });
+
+        const { leftProfile, rightProfile } = extractProfiles(rows);
+        const lines = rows.map((row) => row.join(''));
+
+        return {
+          lines,
+          width,
+          rootPos,
+          leftProfile,
+          rightProfile,
+        };
+      }
+
+      const left = buildTreeLines(node.left);
+      const right = buildTreeLines(node.right);
+      const minSpacing = 2;
+
+      let offset = minSpacing;
+      const overlapDepth = Math.min(left.lines.length, right.lines.length);
+      for (let depth = 0; depth < overlapDepth; depth += 1) {
+        const requiredOffset =
+          left.rightProfile[depth] + minSpacing - right.leftProfile[depth];
+        if (requiredOffset > offset) {
+          offset = requiredOffset;
+        }
+      }
+
+      let width = Math.max(left.width, offset + right.width);
+      let leftStart = 0;
+      let rightStart = offset;
+      let leftRoot = left.rootPos + leftStart;
+      let rightRoot = rightStart + right.rootPos;
+      let rootPos = Math.floor((leftRoot + rightRoot) / 2);
+      let rootStart = rootPos - Math.floor((valueWidth - 1) / 2);
+
+      if (rootStart < 0) {
+        const shift = -rootStart;
+        width += shift;
+        rootPos += shift;
+        leftStart += shift;
+        rightStart += shift;
+        leftRoot += shift;
+        rightRoot += shift;
+        rootStart = 0;
+      }
+
+      if (rootStart + valueWidth > width) {
+        const extension = rootStart + valueWidth - width;
+        width += extension;
+      }
+
+      const rows = [];
+      const firstRow = makeRow(width);
+      placeString(firstRow, valueText, rootStart);
+      rows.push(firstRow);
+
+      const secondRow = makeRow(width);
+      const leftConnectorPos = Math.floor((rootPos + leftRoot) / 2);
+      const rightConnectorPos = Math.floor((rootPos + rightRoot) / 2);
+      if (leftConnectorPos >= 0 && leftConnectorPos < width) {
+        secondRow[leftConnectorPos] = '/';
+      }
+      if (rightConnectorPos >= 0 && rightConnectorPos < width) {
+        secondRow[rightConnectorPos] = '\\';
+      }
+      rows.push(secondRow);
+
+      const childHeight = Math.max(left.lines.length, right.lines.length);
+      for (let depth = 0; depth < childHeight; depth += 1) {
+        const row = makeRow(width);
+        if (depth < left.lines.length) {
+          placeString(row, left.lines[depth], leftStart);
+        }
+        if (depth < right.lines.length) {
+          placeString(row, right.lines[depth], rightStart);
+        }
+        rows.push(row);
+      }
+
+      const { leftProfile, rightProfile } = extractProfiles(rows);
+      const lines = rows.map((row) => row.join(''));
+
+      return {
+        lines,
+        width,
+        rootPos,
+        leftProfile,
+        rightProfile,
+      };
+    }
+
+    function renderBTree(command) {
+      const match = command.match(/^bTree\((.*)\)$/u);
+      if (!match) {
+        return 'Invalid bTree command.';
+      }
+
+      let root;
+      try {
+        root = parseBTreeExpression(match[1]);
+      } catch (error) {
+        return error.message;
+      }
+
+      const { lines } = buildTreeLines(root);
+      const trimmed = lines.map((line) => rtrim(line));
+      const expanded = trimmed.map((line) => line.replace(/ /gu, '  '));
+      return expanded.join('\n');
+    }
+
+    function processCommand(command) {
+      const trimmed = command.trim();
+      if (!trimmed) {
+        return null;
+      }
+
+      if (trimmed.startsWith('bars(')) {
+        return renderBars(trimmed);
+      }
+      if (trimmed.startsWith('bTree(')) {
+        return renderBTree(trimmed);
+      }
+      return 'Unrecognized command.';
+    }
+
+    function updateOutput() {
+      const rawLines = inputArea.value.split(/\r?\n/u);
+      const commands = rawLines.map((line) => line.trim()).filter((line) => line.length > 0);
+
+      if (commands.length === 0) {
+        outputArea.value = '';
+        return;
+      }
+
+      const sections = [];
+      commands.forEach((command, index) => {
+        const result = processCommand(command);
+        sections.push(command);
+        sections.push('');
+        sections.push(result);
+        if (index < commands.length - 1) {
+          sections.push('--------------------------');
+          sections.push('');
+        }
+      });
+
+      outputArea.value = sections.join('\n');
+    }
+
+    inputArea.addEventListener('input', updateOutput);
+    updateOutput();
+  </script>
+</body>
+</html>
